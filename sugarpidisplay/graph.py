@@ -15,7 +15,7 @@ rightMargin = 1
 # xZero,yZero is in the bottom right corner
 maxBgVal = 240.0
 minBgVal = 30.0
-minTimeVal = -115
+minTimeVal = -55
 maxTimeVal = 0
 xZeroOffset = gW - 6 -1
 yZeroOffset = gH - botMargin - 1
@@ -26,9 +26,9 @@ def drawAxes(draw):
     # x-axis
     draw.line(((leftMargin, yZeroOffset), (gW-rightMargin-1, yZeroOffset)), fill = 0, width=1)
 
-    # lines at 70 and 180
+    # lines at 70 and 140
     drawSafeBgGridLine(draw, 70, 3)
-    drawSafeBgGridLine(draw, 180, 3)
+    drawSafeBgGridLine(draw, 140, 3)
 
     # x-ticks
     for t in range(maxTimeVal,minTimeVal-1,-5):
