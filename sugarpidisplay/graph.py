@@ -13,9 +13,9 @@ rightMargin = 1
 # x is time, from -55 minutes to 0
 # y is BG, from 60-400
 # xZero,yZero is in the bottom right corner
-maxBgVal = 300.0
-minBgVal = 60.0
-minTimeVal = -55
+maxBgVal = 240.0
+minBgVal = 30.0
+minTimeVal = -115
 maxTimeVal = 0
 xZeroOffset = gW - 6 -1
 yZeroOffset = gH - botMargin - 1
