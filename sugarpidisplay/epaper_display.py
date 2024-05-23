@@ -1,7 +1,4 @@
 import logging
-import os
-import time
-import traceback
 from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
 
@@ -10,58 +7,46 @@ import sugarpidisplay.epd2in13_V2 as epd2in13
 from .config_utils import Cfg
 from .graph import drawGraph
 from .trend import Trend
-from .utils import get_reading_age_minutes, get_stale_minutes, seconds_since
+from .utils import get_reading_age_minutes, get_stale_minutes, seconds_since, get_font_path
 
 minLogLevel = logging.INFO
 idleRefreshSeconds = 330
 EPD_WIDTH       = 122
 EPD_HEIGHT      = 250
+# EPD defaults to what I'm calling 0° for portrait and 270° for landscape
 
 class EpaperDisplay:
-    __config = {}
     __epd = None
-    __screenMode = ""
-    __logger = None
-    __hPortraitImage = None
-    __hLandscapeImage = None
 
-    __dirty = False
-
-    __lastScreenData = None
     __arrowImgSingle = None
     __arrowImgDouble = None
 
-    def __init__(self, logger):
+    def __init__(self, logger, config):
         self.__logger = logger
-        self.__hPortraitImage = Image.new(
-            '1', (EPD_WIDTH, EPD_HEIGHT), 255)   # 122x250
-        self.__hLandscapeImage = Image.new(
-            '1', (EPD_HEIGHT, EPD_WIDTH), 255)   # 250x122
+        self.__screenMode = ""
+        self.__dirty = False
+        fontPath = get_font_path('Inconsolata-Regular.ttf')
 
-        self.__bgPanel = Panel((0, 0), (122, 70))
-        self.__agePanel = Panel((0, 70), (70, 52))
-        self.__trendPanel = Panel((70, 70), (52, 52))
-        self.__graphPanel = Panel((0, 122), (122, 128))
+        self.__config = {}
+        self.__config[Cfg.time_24hour] = config[Cfg.time_24hour]
+        self.__config[Cfg.orientation] = config[Cfg.orientation]
+        self.__config[Cfg.show_graph] = config[Cfg.show_graph]
+        self.__config[Cfg.unit_mmol] = config[Cfg.unit_mmol]
+
+        # TextModeImage is used to display banner text on startup.  Always landscape
+        self.__hTextModeImage = Image.new(
+            '1', (EPD_HEIGHT, EPD_WIDTH), 255)   # Landscape 250x122
         self.__bannerPanel = Panel(
             (0, 0), (EPD_HEIGHT, EPD_WIDTH))
 
-        self.__allPanels = [self.__bgPanel, self.__agePanel,
-                            self.__trendPanel, self.__graphPanel, self.__bannerPanel]
+        self.__allPanels = [self.__bannerPanel]
 
-        absFilePath = os.path.abspath(__file__)
-        dir = os.path.dirname(absFilePath)
-        fontPath = os.path.join(dir, 'Inconsolata-Regular.ttf')
-        self.__fontMsg = ImageFont.truetype(fontPath, 30)
-        self.__fontBG = ImageFont.truetype(fontPath, 74)
-        self.__fontAge = ImageFont.truetype(fontPath, 22)
-        self.__fontTime = ImageFont.truetype(fontPath, 18)
+        self.define_glucose_layout(fontPath)
 
         self.__initTrendImages(self.__trendPanel.size)
+
         self.__lastScreenData = ScreenData()
         return None
-
-    def set_config(self, config):
-        self.__config[Cfg.time_24hour] = config[Cfg.time_24hour]
 
     def open(self):
         self.__epd = epd2in13.EPD()
@@ -69,36 +54,91 @@ class EpaperDisplay:
         return True
 
     def close(self):
-        self.__epd.init(self.__epd.FULL_UPDATE)
+        self.__epd.init()
         self.__epd.Clear(0xFF)
         self.__epd.sleep()
         self.__epd = None
         return True
+
+    def define_glucose_layout(self, fontPath):
+
+        self.__fontMsg = ImageFont.truetype(fontPath, 30)
+        self.__fontAge = ImageFont.truetype(fontPath, 22)
+        self.__fontTime = ImageFont.truetype(fontPath, 18)
+        # Blood glucose display screen
+        if self.__config[Cfg.orientation] in [0,180]:
+            self.__hGlucoseModeImage = Image.new(
+                '1', (EPD_WIDTH, EPD_HEIGHT), 255)   # Portrait 122x250
+        else:
+            self.__hGlucoseModeImage = Image.new(
+                '1', (EPD_HEIGHT, EPD_WIDTH), 255)   # Landscape 250x122
+
+        if self.__config[Cfg.show_graph]:
+            self.__fontBG = ImageFont.truetype(fontPath, 74)
+            self.__fontBG2 = ImageFont.truetype(fontPath, 55)
+            bgPanelSize = (122, 70)
+            agePanelSize = (70, 52)
+            trendPanelSize = (52, 52)
+            graphPanelSize = (122, 122)
+            if self.__config[Cfg.orientation] in [0,180]:
+                self.__bgPanel = Panel((0, 0), bgPanelSize)
+                self.__agePanel = Panel((0, 70), agePanelSize)
+                self.__trendPanel = Panel((70, 70), trendPanelSize)
+                self.__graphPanel = Panel((0, 125), graphPanelSize)
+            else:
+                self.__bgPanel = Panel((0, 0), bgPanelSize)
+                self.__agePanel = Panel((0, 70), agePanelSize)
+                self.__trendPanel = Panel((70, 70), trendPanelSize)
+                self.__graphPanel = Panel((125, 0), graphPanelSize)
+            self.__allPanels.extend([self.__bgPanel, self.__agePanel, self.__trendPanel, self.__graphPanel])
+        else:
+            agePanelSize = (70, 45)
+            trendPanelSize = (70, 70)
+            if self.__config[Cfg.orientation] in [0,180]:
+                self.__fontBG = ImageFont.truetype(fontPath, 76)
+                self.__fontBG2 = ImageFont.truetype(fontPath, 57)
+                bgPanelSize = (122, 70)
+                self.__bgPanel = Panel((0, 26), bgPanelSize)
+                self.__trendPanel = Panel((26, 125), trendPanelSize)
+                self.__agePanel = Panel((26, 205), agePanelSize)
+            else:
+                self.__fontBG = ImageFont.truetype(fontPath, 114)
+                self.__fontBG2 = ImageFont.truetype(fontPath, 85)
+                bgPanelSize = (180, 90)
+                self.__bgPanel = Panel((0, 16), bgPanelSize)
+                self.__trendPanel = Panel((180, 0), trendPanelSize)
+                self.__agePanel = Panel((180, 80), agePanelSize)
+            self.__allPanels.extend([self.__bgPanel, self.__agePanel, self.__trendPanel])
 
     def __drawScreen(self):
         if (not self.__dirty):
             return
         self.__dirty = False
         if self.__screenMode == "egv":
-            self.__wipeImage(self.__hPortraitImage)
-            self.__hPortraitImage.paste(
+            self.__wipeImage(self.__hGlucoseModeImage)
+            self.__hGlucoseModeImage.paste(
                 self.__bgPanel.image, self.__bgPanel.xy)
-            self.__hPortraitImage.paste(
+            self.__hGlucoseModeImage.paste(
                 self.__agePanel.image, self.__agePanel.xy)
-            self.__hPortraitImage.paste(
+            self.__hGlucoseModeImage.paste(
                 self.__trendPanel.image, self.__trendPanel.xy)
-            self.__hPortraitImage.paste(
-                self.__graphPanel.image, self.__graphPanel.xy)
+            if self.__config[Cfg.show_graph]:
+                self.__hGlucoseModeImage.paste(
+                    self.__graphPanel.image, self.__graphPanel.xy)
 
-            self.__epd.init(self.__epd.FULL_UPDATE)
-            self.__epd.display(self.__epd.getbuffer(self.__hPortraitImage))
+            rotatedImg = self.__hGlucoseModeImage.rotate(180 * (1 if self.__config[Cfg.orientation] in [90,180] else 0))
+            self.__epd.init()
+            self.__epd.display(self.__epd.getbuffer(rotatedImg))
             self.__epd.sleep()
+
         if self.__screenMode == "text":
-            self.__wipeImage(self.__hLandscapeImage)
-            self.__hLandscapeImage.paste(
+            self.__wipeImage(self.__hTextModeImage)
+            self.__hTextModeImage.paste(
                 self.__bannerPanel.image, self.__bannerPanel.xy)
-            self.__epd.init(self.__epd.FULL_UPDATE)
-            self.__epd.display(self.__epd.getbuffer(self.__hLandscapeImage))
+
+            rotatedImg = self.__hTextModeImage.rotate(180 * (1 if self.__config[Cfg.orientation]==90 else 0))
+            self.__epd.init()
+            self.__epd.display(self.__epd.getbuffer(rotatedImg))
             self.__epd.sleep()
 
     def __wipeImage(self, img):
@@ -106,21 +146,21 @@ class EpaperDisplay:
             return
         draw = ImageDraw.Draw(img)
         draw.rectangle(((0, 0), img.size), fill=(255))
-        #size = (img.size[0]-1, img.size[1]-1)
-        #draw.rectangle(((0,0), size), outline = (0), fill = (255) )
+        # size = (img.size[0]-1, img.size[1]-1)
+        # draw.rectangle(((0,0), size), outline = (0), fill = (255) )
 
     def __wipePanel(self, panel):
         self.__wipeImage(panel.image)
 
     def clear(self):
-        self.__epd.init(self.__epd.FULL_UPDATE)
+        self.__epd.init()
         print("Clear...")
         self.__epd.Clear(0xFF)
         self.__epd.sleep()
         for panel in self.__allPanels:
             self.__wipePanel(panel)
-        self.__wipeImage(self.__hPortraitImage)
-        self.__wipeImage(self.__hLandscapeImage)
+        self.__wipeImage(self.__hGlucoseModeImage)
+        self.__wipeImage(self.__hTextModeImage)
         self.__screenMode = ""
 
     def show_centered(self, logLevel, line0, line1):
@@ -155,7 +195,8 @@ class EpaperDisplay:
         self.__update_trend(newScreenData.Trend)
         #self.__update_age(newScreenData.ReadingTime, newScreenData.Age)
         self.__update_clock(newScreenData.UpdateTime)
-        self.__update_graph(readings)
+        if self.__config[Cfg.show_graph]:
+            self.__update_graph(readings)
 
         self.__dirty = True
         self.__lastScreenData = newScreenData
@@ -163,16 +204,27 @@ class EpaperDisplay:
 
     def __update_value(self, value, isStale):
         strikeThrough = isStale or value is None
-        valStr = ""
-        if (value is not None):
-            valStr = str(value)
-        valStr = valStr.rjust(3)
-        #print(valStr + "   " + str(mins))
         self.__wipePanel(self.__bgPanel)
         drawBg = ImageDraw.Draw(self.__bgPanel.image)
         textXY = (5, 8)
+        textSize = (0,0)
+        if (value is None or not self.__config[Cfg.unit_mmol]):
+            valStr = ""
+            if (value is not None):
+                valStr = str(value)
+            valStr = valStr.rjust(3)
+            textSize = self.__drawText(drawBg, textXY, valStr, self.__fontBG)
 
-        textSize = self.__drawText(drawBg, textXY, valStr, self.__fontBG)
+        else:
+            valMmol = value/18
+            valStr = "{:.1f}".format(valMmol)
+            valStr = valStr.rjust(4)
+
+            textIntSize = self.__drawText(drawBg, textXY, valStr[0:2], self.__fontBG)
+            gap = textIntSize[0] / 16
+            textDecSize = self.__drawText(drawBg, (textXY[0] + textIntSize[0] + gap, textXY[1]), valStr[3], self.__fontBG2)
+            textSize = (textIntSize[0] + gap + textDecSize[0], textIntSize[1])
+
         if (strikeThrough):
             drawBg.line((textXY[0], textXY[1] + textSize[1]//2,
                          textXY[0] + textSize[0], textXY[1] + textSize[1]//2),
@@ -190,6 +242,11 @@ class EpaperDisplay:
         arrowImg = self.__get_trend_image(trend)
         if (arrowImg is not None):
             self.__trendPanel.image.paste(arrowImg, (0, 0))
+
+        # img = self.__trendPanel.image
+        # draw = ImageDraw.Draw(img)
+        # size = (img.size[0]-1, img.size[1]-1)
+        # draw.rectangle(((0,0), size), outline = (0), fill = (255) )
 
     #def __update_age(self, timestamp, age):
         #mins = (mins//2) * 2 # round to even number
@@ -244,7 +301,8 @@ class EpaperDisplay:
         h = size[1]
         x2 = w - 1
         #y2 = h - 1
-        lw = 3
+        # TODO - consider lw in the math below
+        lw = 5
         self.__arrowImgSingle = Image.new('1', size, 255)
         draw = ImageDraw.Draw(self.__arrowImgSingle)
         aw = w//4

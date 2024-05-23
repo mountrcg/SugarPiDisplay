@@ -14,6 +14,9 @@
       <div>{{ form.dexcom_user(size=40) }}</div>
       <div class="block">{{ form.dexcom_pass.label }}</div>
       <div>{{ form.dexcom_pass(size=40) }}</div>
+      <div class="block">
+        {{ form.outside_us.label }} {{ form.outside_us }}
+      </div>
     </div>
     <div class="toggle nightscout">
       <div class="block">{{ form.ns_url.label }}</div>
@@ -22,7 +25,12 @@
       <div>{{ form.ns_token(size=40) }}</div>
     </div>
     <div class="block">
-      {{ form.time24hour.label}} {{ form.time24hour}}
+      {{ form.time24hour.label }} {{ form.time24hour }}
+    </div>
+    <div class="block">{{ form.orientation.label }}</div>
+    <div>{{ form.orientation }}</div>
+    <div class="block">
+      {{ form.show_graph.label }} {{ form.show_graph }}
     </div>
     <div class="block" style="display: none;">
       {{ form.unit.label}} {{ form.unit}}
